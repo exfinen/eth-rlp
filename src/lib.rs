@@ -3,7 +3,7 @@ mod item;
 
 use byteorder::{ByteOrder, BigEndian};
 use crate::item::Item;
-use crate::byte_stream::{ByteStream, TakeResult, SerErr};
+use crate::byte_stream::{ByteStream, Result::Bytes, Result::Fail, SerErr};
 
 pub struct Rlp(Item);
 
@@ -22,27 +22,27 @@ impl Rlp {
 
   fn decode_byte_stream(st: &mut ByteStream) -> Result<Item, SerErr> {
     match st.take(1) {
-      TakeResult::Err(index) => return Err(SerErr::NoLengthHeader(index)),
-      TakeResult::Ok(hdr) => {
+      Fail(index) => return Err(SerErr::NoLengthHeader(index)),
+      Bytes(hdr) => {
         let hdr = hdr[0];
         if hdr <= 0x7f {
           Ok(Item::Str(vec![hdr]))
         } else if hdr <= 0xb7 {
           let len = hdr - 0x80;
           match st.take(len as usize) {
-            TakeResult::Err(index) => return Err(SerErr::NoData(hdr as usize, index)),
-            TakeResult::Ok(xs) => Ok(Item::Str(xs.to_vec())),
+            Fail(index) => return Err(SerErr::NoData(hdr as usize, index)),
+            Bytes(xs) => Ok(Item::Str(xs.to_vec())),
           }
         } else if hdr <= 0xbf {
           let len_bytes_len = hdr as usize - 0xb7; // range of len_bytes_len is 1 to 8
           match st.take(len_bytes_len) {
-            TakeResult::Err(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
-            TakeResult::Ok(len_bytes) => {
+            Fail(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
+            Bytes(len_bytes) => {
               let len = BigEndian::read_uint(len_bytes, len_bytes_len);
 
               match st.take(len as usize) {
-                TakeResult::Err(p) => return Err(SerErr::NoData(len as usize, p)),
-                TakeResult::Ok(xs) => Ok(Item::Str(xs.to_vec())),
+                Fail(p) => return Err(SerErr::NoData(len as usize, p)),
+                Bytes(xs) => Ok(Item::Str(xs.to_vec())),
               }
             }
           }
@@ -54,8 +54,8 @@ impl Rlp {
         } else {
           let len_bytes_len = hdr as usize - 0xf7;
           match st.take(len_bytes_len) {
-            TakeResult::Err(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
-            TakeResult::Ok(len_bytes) => {
+            Fail(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
+            Bytes(len_bytes) => {
               let num_items = BigEndian::read_uint(len_bytes, len_bytes_len);
               let item = Rlp::serialize_list(num_items as usize, st)?;
               Ok(item)

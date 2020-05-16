@@ -25,9 +25,9 @@ impl fmt::Debug for SerErr {
   }
 }
 
-pub enum TakeResult<'a> {
-  Ok(&'a [u8]),
-  Err(IndexType),
+pub enum Result<'a> {
+  Bytes(&'a [u8]),
+  Fail(IndexType),
 }
 
 impl<'a> ByteStream<'a> {
@@ -46,12 +46,12 @@ impl<'a> ByteStream<'a> {
     self.buf.len() == self.index
   }
 
-  pub fn take(&mut self, n: usize) -> TakeResult {
+  pub fn take(&mut self, n: usize) -> Result {
     if self.index + n > self.buf.len() {
-      return TakeResult::Err(self.index)
+      return Result::Fail(self.index)
     }
     let v = &self.buf[self.index..self.index + n];
     self.index += n;
-    TakeResult::Ok(v)
+    Result::Bytes(v)
   }
 }
