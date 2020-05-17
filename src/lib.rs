@@ -34,7 +34,12 @@ impl Rlp {
           let len = hdr - 0x80;
           match st.take(len as usize) {
             Fail(index) => return Err(SerErr::NoData(hdr as usize, index)),
-            Bytes(xs) => Ok(Item::Str(xs.to_vec())),
+            Bytes(xs) => {
+              if len == 1 && xs[0] <= 0x7f {
+                return Err(SerErr::BadSingleByteEncoding(xs[0], st.get_index())) // TODO write test
+              }
+              Ok(Item::Str(xs.to_vec()))
+            },
           }
         } else if hdr <= 0xbf {
           let len_bytes_len = hdr as usize - 0xb7; // range of len_bytes_len is 1 to 8
@@ -149,7 +154,7 @@ mod tests {
   // The string "dog" = [ 0x83, 'd', 'o', 'g' ]
   #[test]
   fn dog() {
-    let in_item = Item::Str("dog".as_bytes().to_vec());
+    let in_item = Item::from("dog");
     let bs = Rlp::encode(in_item);
     println!(r#"encoded "dog" -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
@@ -165,11 +170,11 @@ mod tests {
 
   // The list [ "cat", "dog" ] = [ 0xc8, 0x83, 'c', 'a', 't', 0x83, 'd', 'o', 'g' ]
   #[test]
-  fn cat_dog() {
+  fn cat_dog_list() {
     let in_item = Item::List(
       vec![
-        Item::Str("cat".as_bytes().to_vec()),
-        Item::Str("dog".as_bytes().to_vec()),
+        Item::from("cat"),
+        Item::from("dog"),
       ]
     );
     let bs = Rlp::encode(in_item);
@@ -181,17 +186,33 @@ mod tests {
       List(xs) => {
         println!("decoded {:?} -> {:?}", hex::encode(&bs), xs);
         assert_eq!(xs.len(), 2);
-        if let Str(bs) = &xs[0] { assert_eq!(bs, &"cat".as_bytes().to_vec()) } else { assert!(false )}
-        if let Str(bs) = &xs[1] { assert_eq!(bs, &"dog".as_bytes().to_vec()) } else { assert!(false )}
+        if let Str(bs) = &xs[0] { assert_eq!(bs, &"cat".as_bytes().to_vec()) } else { assert!(false) }
+        if let Str(bs) = &xs[1] { assert_eq!(bs, &"dog".as_bytes().to_vec()) } else { assert!(false) }
       },
       _ => assert!(false),
     };
   }
+
+  // The empty string ('null') = [ 0x80 ]
+  #[test]
+  fn empty_str() {
+    let in_item = Item::Str(vec![]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded "" -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0x80]);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), String::from_utf8(bs2.clone()).unwrap());
+        assert_eq!(bs2, "".as_bytes());
+      },
+    };
+  }
 }
+
+
 /*
-
-The empty string ('null') = [ 0x80 ]
-
 The empty list = [ 0xc0 ]
 
 The integer 0 = [ 0x80 ]
