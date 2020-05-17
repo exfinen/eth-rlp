@@ -103,8 +103,8 @@ impl Rlp {
           bs2.append(&mut bs.clone());
           Ok(bs2)
         } else {
-          if len > usize::MAX {
-            return Err(SerErr::LengthTooLarge(0, 0)); // TODO give params somehow
+          if len > usize::MAX { // TODO write test
+            return Err(SerErr::LengthTooLarge(0, 0));
           }
           let (len_binary_size, mut len_binary) = get_in_binary(&len);
           let mut bs2 = vec![0xb7 + len_binary_size];
@@ -128,6 +128,9 @@ impl Rlp {
           Ok(bs2)
         } else {
           let (len_binary_size, mut len_binary) = get_in_binary(&len);
+          if len_binary_size > 8 {
+            return Err(SerErr::LengthTooLarge(len_binary_size as u8, 0)); // TODO write test
+          }
           let mut bs2 = vec![0xf7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs);
@@ -167,7 +170,7 @@ mod tests {
   // The list [ "cat", "dog" ] = [ 0xc8, 0x83, 'c', 'a', 't', 0x83, 'd', 'o', 'g' ]
   #[test]
   fn cat_dog_list() {
-    let in_item = Item::List(
+    let in_item = List(
       vec![
         Item::from("cat"),
         Item::from("dog"),
