@@ -45,6 +45,9 @@ impl Rlp {
           }
         } else if hdr <= 0xbf {
           let len_bytes_len = hdr as usize - 0xb7; // range of len_bytes_len is 1 to 8
+          if len_bytes_len > 8 {
+            return Err(SerErr::LengthTooLarge(len_bytes_len as u8, st.get_index())); // TODO write test
+          }
           match st.take(len_bytes_len) {
             Fail(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
             Bytes(len_bytes) => {
