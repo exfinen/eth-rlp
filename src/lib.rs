@@ -209,12 +209,28 @@ mod tests {
       },
     };
   }
+
+  // The empty list = [ 0xc0 ]
+  #[test]
+  fn empty_list() {
+    let in_item = Item::List(vec![]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded [] -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0xc0]);
+
+    match Rlp::decode(&bs).unwrap() {
+      Str(_) => assert!(false),
+      List(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 0);
+      },
+    };
+  }
+
 }
 
 
 /*
-The empty list = [ 0xc0 ]
-
 The integer 0 = [ 0x80 ]
 
 The encoded integer 0 ('\x00') = [ 0x00 ]
