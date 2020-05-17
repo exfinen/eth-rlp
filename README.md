@@ -1,6 +1,6 @@
 # eth-rlp
 
-Implementaion of Ethereum RLP encoding in Rust.
+Implementaion of Ethereum RLP encoding/decoding in Rust.
 
 ## Usage
 Construct an item using below enum:
