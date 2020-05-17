@@ -57,7 +57,6 @@ impl Rlp {
             }
           }
         } else if hdr <= 0xf7 {
-          println!("is list");
           let len = hdr - 0xc0;  // length of the list in bytes
           let item = Rlp::serialize_list(len as usize, st)?;
           Ok(item)
@@ -285,11 +284,101 @@ mod tests {
       },
     };
   }
+
+  // The set theoretical representation of three,
+  // [ [], [[]], [ [], [[]] ] ] = [ 0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0 ]
+  #[test]
+  fn theoretical_rep_of_3() {
+    let in_item = List(vec![
+      List(vec![]),
+      List(vec![
+        List(vec![]),
+      ]),
+      List(vec![
+        List(vec![]),
+        List(vec![
+          List(vec![]),
+        ]),
+      ]),
+    ]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded [ [], [[]], [ [], [[]] ] ] -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0]);
+
+    match Rlp::decode(&bs).unwrap() {
+      Str(_) => assert!(false),
+      List(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 3);
+        // first list []
+        match &bs2[0] {
+          Str(_) => assert!(false),
+          List(bs3) => {
+            assert_eq!(bs3.len(), 0);
+          },
+        }
+        // second list [[]]
+        match &bs2[1] {
+          Str(_) => assert!(false),
+          List(bs3) => {
+            assert_eq!(bs3.len(), 1);
+            match &bs3[0] {
+              Str(_) => assert!(false),
+              List(bs4) => {
+                assert_eq!(bs4.len(), 0);
+              },
+            }
+          },
+        }
+        // third list [ [], [[]] ]
+        match &bs2[2] {
+          Str(_) => assert!(false),
+          List(bs3) => {
+            assert_eq!(bs3.len(), 2);
+            match &bs3[0] {
+              Str(_) => assert!(false),
+              List(bs4) => {
+                assert_eq!(bs4.len(), 0);
+              },
+            }
+            match &bs3[1] {
+              Str(_) => assert!(false),
+              List(bs4) => {
+                assert_eq!(bs4.len(), 1);
+                match &bs4[0] {
+                  Str(_) => assert!(false),
+                  List(bs5) => {
+                    assert_eq!(bs5.len(), 0);
+                  },
+                }
+              },
+            }
+          },
+        }
+      },
+    };
+  }
+
+  // The string
+  //   "Lorem ipsum dolor sit amet, consectetur adipisicing elit" =
+  //   [ 0xb8, 0x38, 'L', 'o', 'r', 'e', 'm', ' ', ... , 'e', 'l', 'i', 't' ]
+  #[test]
+  fn long_str() {
+    let s = "Lorem ipsum dolor sit amet, consectetur adipisicing elit";
+    let in_item = Item::from(s);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded {} -> {}"#, s, hex::encode(&bs));
+
+    let mut exp = vec![0xb8, 0x38];
+    exp.append(&mut s.as_bytes().to_vec());
+    assert_eq!(bs, exp);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2, s.as_bytes().to_vec());
+      },
+    };
+  }
 }
-
-/*
-
-The set theoretical representation of three, [ [], [[]], [ [], [[]] ] ] = [ 0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0 ]
-
-The string "Lorem ipsum dolor sit amet, consectetur adipisicing elit" = [ 0xb8, 0x38, 'L', 'o', 'r', 'e', 'm', ' ', ... , 'e', 'l', 'i', 't' ]
-*/
