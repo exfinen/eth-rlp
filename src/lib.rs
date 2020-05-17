@@ -1,9 +1,11 @@
 mod byte_stream;
 mod item;
+mod common;
 
 use byteorder::{ByteOrder, BigEndian};
 use crate::item::Item;
 use crate::byte_stream::{ByteStream, Result::Bytes, Result::Fail, SerErr};
+use common::get_in_binary;
 
 pub struct Rlp;
 
@@ -85,21 +87,6 @@ impl Rlp {
     }
   }
 
-  fn get_in_binary(n: &usize) -> (u8, Vec<u8>) {
-    let mut buf = [0u8; 8];
-    BigEndian::write_uint(&mut buf, *n as u64, 8);
-
-    let mut binary_size = 8;
-    while binary_size > 0 {
-      let b = buf[8 - binary_size];
-      if b > 0 {
-        break
-      }
-      binary_size -= 1;
-    }
-    (binary_size as u8, buf[8 - binary_size..].to_vec())
-  }
-
   fn encode_item(item: &Item) -> Vec<u8> {
     match item {
       Item::Str(bs) => {
@@ -111,7 +98,7 @@ impl Rlp {
           bs2.append(&mut bs.clone());
           bs2
         } else {
-          let (len_binary_size, mut len_binary) = Rlp::get_in_binary(&len);
+          let (len_binary_size, mut len_binary) = get_in_binary(&len);
           let mut bs2 = vec![0xb7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs.clone());
@@ -131,7 +118,7 @@ impl Rlp {
           bs2.append(&mut bs);
           bs2
         } else {
-          let (len_binary_size, mut len_binary) = Rlp::get_in_binary(&len);
+          let (len_binary_size, mut len_binary) = get_in_binary(&len);
           let mut bs2 = vec![0xf7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs);
@@ -227,17 +214,80 @@ mod tests {
     };
   }
 
+  // The integer 0 = [ 0x80 ]
+  #[test]
+  fn integer_0() {
+    let in_item = Item::from(0);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded int 0 -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0x80]);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 0);
+      },
+    };
+  }
+
+  // The encoded integer 0 ('\x00') = [ 0x00 ]
+  #[test]
+  fn encoded_integer_0() {
+    let in_item = Item::Str(vec![0]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded 00 -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0]);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 1);
+        assert_eq!(bs2[0], 0);
+      },
+    };
+  }
+
+  // The encoded integer 15 ('\x0f') = [ 0x0f ]
+  #[test]
+  fn encoded_integer_15() {
+    let in_item = Item::Str(vec![0x0f]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded 0x0f -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0x0f]);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 1);
+        assert_eq!(bs2[0], 0x0f);
+      },
+    };
+  }
+
+  // The encoded integer 1024 ('\x04\x00') = [ 0x82, 0x04, 0x00 ]
+  #[test]
+  fn encoded_integer_1024() {
+    let in_item = Item::Str(vec![0x04, 0x00]);
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded 0x0400 -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0x82, 0x04, 0x00]);
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), bs2);
+        assert_eq!(bs2.len(), 2);
+        assert_eq!(bs2[0], 0x04);
+        assert_eq!(bs2[1], 0x00);
+      },
+    };
+  }
 }
 
-
 /*
-The integer 0 = [ 0x80 ]
-
-The encoded integer 0 ('\x00') = [ 0x00 ]
-
-The encoded integer 15 ('\x0f') = [ 0x0f ]
-
-The encoded integer 1024 ('\x04\x00') = [ 0x82, 0x04, 0x00 ]
 
 The set theoretical representation of three, [ [], [[]], [ [], [[]] ] ] = [ 0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0 ]
 
