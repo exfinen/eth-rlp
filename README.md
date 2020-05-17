@@ -31,7 +31,7 @@ match Rlp::decode(&ba).unwrap() {
 }
 ```
 
-More detailed usage is available in tests in lib.rs
+Further details are available in tests in lib.rs
 
 ## Helper functions
 - To encode empty string, use `Item::empty_str()`
