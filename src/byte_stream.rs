@@ -8,6 +8,7 @@ pub struct ByteStream<'a> {
 }
 
 pub enum SerErr {
+  NoChildTree(usize, IndexType),
   NoLengthHeader(IndexType),
   NoData(usize, IndexType),
   NoLengthSize(usize, IndexType),
@@ -17,9 +18,10 @@ pub enum SerErr {
 impl fmt::Debug for SerErr {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
+      SerErr::NoChildTree(len, idx) => write!(f, "No child tree of length {} at {}", len, idx),
       SerErr::NoLengthHeader(idx) => write!(f, "No length header at {}", idx),
-      SerErr::NoData(size, idx) => write!(f, "No data of size {} at {}", size, idx),
-      SerErr::NoLengthSize(size, idx) => write!(f, "No length size of {} at {}", size, idx),
+      SerErr::NoData(len, idx) => write!(f, "No data of size {} at {}", len, idx),
+      SerErr::NoLengthSize(len, idx) => write!(f, "No length size of {} at {}", len, idx),
       SerErr::RedundantData(idx) => write!(f, "Redundant data found at {}", idx),
     }
   }

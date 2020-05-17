@@ -8,16 +8,19 @@ use crate::byte_stream::{ByteStream, Result::Bytes, Result::Fail, SerErr};
 pub struct Rlp;
 
 impl Rlp {
-  fn serialize_list(num_items: usize, st: &mut ByteStream) -> Result<Item, SerErr> {
-    let mut items = vec![];
-    for _ in 0..num_items {
-      let item = match Rlp::decode_byte_stream(st) {
-        Ok(x) => x,
-        Err(e) => return Err(e),
-      };
-      items.push(item);
+  fn serialize_list(len: usize, st: &mut ByteStream) -> Result<Item, SerErr> {
+    match st.take(len) {
+      Fail(index) => return Err(SerErr::NoChildTree(len, index)),
+      Bytes(child_buf) => {
+        let mut child_st = ByteStream::new(child_buf);
+        let mut items = vec![];
+        while !child_st.is_empty() {
+          let item = Rlp::decode_byte_stream(&mut child_st)?;
+          items.push(item);
+        }
+        Ok(Item::List(items))
+      },
     }
-    Ok(Item::List(items))
   }
 
   fn decode_byte_stream(st: &mut ByteStream) -> Result<Item, SerErr> {
@@ -47,8 +50,9 @@ impl Rlp {
             }
           }
         } else if hdr <= 0xf7 {
-          let num_items = hdr - 0xc0;  // number of items in the list, not the legth of all items in bytes
-          let item = Rlp::serialize_list(num_items as usize, st)?;
+          println!("is list");
+          let len = hdr - 0xc0;  // length of the list in bytes
+          let item = Rlp::serialize_list(len as usize, st)?;
           Ok(item)
 
         } else {
@@ -56,8 +60,8 @@ impl Rlp {
           match st.take(len_bytes_len) {
             Fail(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
             Bytes(len_bytes) => {
-              let num_items = BigEndian::read_uint(len_bytes, len_bytes_len);
-              let item = Rlp::serialize_list(num_items as usize, st)?;
+              let len = BigEndian::read_uint(len_bytes, len_bytes_len);
+              let item = Rlp::serialize_list(len as usize, st)?;
               Ok(item)
             }
           }
@@ -113,8 +117,8 @@ impl Rlp {
         let (mut bs, len) = items.into_iter().fold((vec![], 0), |acc, item| {
           let (mut bs, len) = acc;
           let mut child_bs = Rlp::encode_item(item);
+          let child_len = child_bs.len();
           bs.append(&mut child_bs);
-          let child_len = bs.len();
           (bs, len + child_len)
         });
         if len <= 55 {
@@ -147,22 +151,44 @@ mod tests {
   fn dog() {
     let in_item = Item::Str("dog".as_bytes().to_vec());
     let bs = Rlp::encode(in_item);
-
+    println!(r#"encoded "dog" -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
-    println!(r#"encoded Item("dog") -> {}"#, hex::encode(&bs));
 
     match Rlp::decode(&bs).unwrap() {
       List(_) => assert!(false),
-      Str(bs2) =>{
-        println!("decoded {} -> Str({:?})", hex::encode(&bs), String::from_utf8(bs2.clone()).unwrap());
+      Str(bs2) => {
+        println!("decoded {} -> {:?}", hex::encode(&bs), String::from_utf8(bs2.clone()).unwrap());
         assert_eq!(bs2, "dog".as_bytes());
       },
     };
-    assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
+  }
+
+  // The list [ "cat", "dog" ] = [ 0xc8, 0x83, 'c', 'a', 't', 0x83, 'd', 'o', 'g' ]
+  #[test]
+  fn cat_dog() {
+    let in_item = Item::List(
+      vec![
+        Item::Str("cat".as_bytes().to_vec()),
+        Item::Str("dog".as_bytes().to_vec()),
+      ]
+    );
+    let bs = Rlp::encode(in_item);
+    println!(r#"encoded ["cat", "dog"] -> {}"#, hex::encode(&bs));
+    assert_eq!(bs, [0xc8, 0x83, 'c' as u8, 'a' as u8, 't' as u8, 0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
+
+    println!("decoding {}", hex::encode(&bs));
+    match Rlp::decode(&bs).unwrap() {
+      List(xs) => {
+        println!("decoded {:?} -> {:?}", hex::encode(&bs), xs);
+        assert_eq!(xs.len(), 2);
+        if let Str(bs) = &xs[0] { assert_eq!(bs, &"cat".as_bytes().to_vec()) } else { assert!(false )}
+        if let Str(bs) = &xs[1] { assert_eq!(bs, &"dog".as_bytes().to_vec()) } else { assert!(false )}
+      },
+      _ => assert!(false),
+    };
   }
 }
 /*
-The list [ "cat", "dog" ] = [ 0xc8, 0x83, 'c', 'a', 't', 0x83, 'd', 'o', 'g' ]
 
 The empty string ('null') = [ 0x80 ]
 
