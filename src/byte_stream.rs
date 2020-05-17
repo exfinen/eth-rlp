@@ -14,6 +14,7 @@ pub enum SerErr {
   NoLengthSize(usize, IndexType),
   RedundantData(IndexType),
   BadSingleByteEncoding(u8, IndexType),
+  LengthTooLarge(u8, IndexType),
 }
 
 impl fmt::Debug for SerErr {
@@ -25,6 +26,7 @@ impl fmt::Debug for SerErr {
       SerErr::NoLengthSize(len, idx) => write!(f, "No length size of {} at {}", len, idx),
       SerErr::RedundantData(idx) => write!(f, "Redundant data found at {}", idx),
       SerErr::BadSingleByteEncoding(x, idx) => write!(f, "{} not encoded as single byte at {}", x, idx),
+      SerErr::LengthTooLarge(len, idx) => write!(f, "Data length in bytes is {} at {}", len, idx),
     }
   }
 }

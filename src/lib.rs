@@ -63,6 +63,9 @@ impl Rlp {
 
         } else {
           let len_bytes_len = hdr as usize - 0xf7;
+          if len_bytes_len > 8 {
+            return Err(SerErr::LengthTooLarge(len_bytes_len as u8, st.get_index())); // TODO write test
+          }
           match st.take(len_bytes_len) {
             Fail(index) => return Err(SerErr::NoLengthSize(len_bytes_len, index)),
             Bytes(len_bytes) => {
@@ -86,48 +89,52 @@ impl Rlp {
     }
   }
 
-  fn encode_item(item: &Item) -> Vec<u8> {
+  fn encode_item(item: &Item) -> Result<Vec<u8>, SerErr> {
     match item {
       Item::Str(bs) => {
         let len = bs.len();
         if len == 1 && bs[0] <= 0x7f {
-          bs.clone()
+          Ok(bs.clone())
         } else if len <= 55 {
           let mut bs2 = vec![0x80 + len as u8];
           bs2.append(&mut bs.clone());
-          bs2
+          Ok(bs2)
         } else {
+          if len > usize::MAX {
+            return Err(SerErr::LengthTooLarge(0, 0)); // TODO give params somehow
+          }
           let (len_binary_size, mut len_binary) = get_in_binary(&len);
           let mut bs2 = vec![0xb7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs.clone());
-          bs2
+          Ok(bs2)
         }
       },
       Item::List(items) => {
-        let (mut bs, len) = items.into_iter().fold((vec![], 0), |acc, item| {
-          let (mut bs, len) = acc;
-          let mut child_bs = Rlp::encode_item(item);
+        let mut bs = vec![];
+        let mut len = 0;
+        for item in items {
+          let mut child_bs = Rlp::encode_item(item)?;
           let child_len = child_bs.len();
           bs.append(&mut child_bs);
-          (bs, len + child_len)
-        });
+          len += child_len;
+        }
         if len <= 55 {
           let mut bs2 = vec![0xc0 + len as u8];
           bs2.append(&mut bs);
-          bs2
+          Ok(bs2)
         } else {
           let (len_binary_size, mut len_binary) = get_in_binary(&len);
           let mut bs2 = vec![0xf7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs);
-          bs2
+          Ok(bs2)
         }
       },
     }
   }
 
-  pub fn encode(item: Item) -> Vec<u8> {
+  pub fn encode(item: Item) -> Result<Vec<u8>, SerErr> {
     Rlp::encode_item(&item)
   }
 }
@@ -141,7 +148,7 @@ mod tests {
   #[test]
   fn dog() {
     let in_item = Item::from("dog");
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded "dog" -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
 
@@ -163,7 +170,7 @@ mod tests {
         Item::from("dog"),
       ]
     );
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded ["cat", "dog"] -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0xc8, 0x83, 'c' as u8, 'a' as u8, 't' as u8, 0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
 
@@ -183,7 +190,7 @@ mod tests {
   #[test]
   fn empty_str() {
     let in_item = Item::Str(vec![]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded "" -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x80]);
 
@@ -200,7 +207,7 @@ mod tests {
   #[test]
   fn empty_list() {
     let in_item = Item::List(vec![]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded [] -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0xc0]);
 
@@ -217,7 +224,7 @@ mod tests {
   #[test]
   fn integer_0() {
     let in_item = Item::from(0);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded int 0 -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x80]);
 
@@ -234,7 +241,7 @@ mod tests {
   #[test]
   fn encoded_integer_0() {
     let in_item = Item::Str(vec![0]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded 00 -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0]);
 
@@ -252,7 +259,7 @@ mod tests {
   #[test]
   fn encoded_integer_15() {
     let in_item = Item::Str(vec![0x0f]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded 0x0f -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x0f]);
 
@@ -270,7 +277,7 @@ mod tests {
   #[test]
   fn encoded_integer_1024() {
     let in_item = Item::Str(vec![0x04, 0x00]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded 0x0400 -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0x82, 0x04, 0x00]);
 
@@ -301,7 +308,7 @@ mod tests {
         ]),
       ]),
     ]);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded [ [], [[]], [ [], [[]] ] ] -> {}"#, hex::encode(&bs));
     assert_eq!(bs, [0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0]);
 
@@ -366,7 +373,7 @@ mod tests {
   fn long_str() {
     let s = "Lorem ipsum dolor sit amet, consectetur adipisicing elit";
     let in_item = Item::from(s);
-    let bs = Rlp::encode(in_item);
+    let bs = Rlp::encode(in_item).unwrap();
     println!(r#"encoded {} -> {}"#, s, hex::encode(&bs));
 
     let mut exp = vec![0xb8, 0x38];

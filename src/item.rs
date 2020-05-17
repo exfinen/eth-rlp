@@ -10,7 +10,6 @@ impl From<&str> for Item {
   }
 }
 
-
 impl From<usize> for Item {
   fn from(n: usize) -> Self {
     use crate::common::get_in_binary;
