@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, BigEndian};
 use crate::item::Item;
 use crate::byte_stream::{ByteStream, Result::Bytes, Result::Fail, SerErr};
 
-pub struct Rlp(Item);
+pub struct Rlp;
 
 impl Rlp {
   fn serialize_list(num_items: usize, st: &mut ByteStream) -> Result<Item, SerErr> {
@@ -66,11 +66,11 @@ impl Rlp {
     }
   }
 
-  pub fn decode(&self, byte_array: &[u8]) -> Result<Self, SerErr> {
+  pub fn decode(byte_array: &[u8]) -> Result<Item, SerErr> {
     let mut st = ByteStream::new(byte_array);
     let item = Rlp::decode_byte_stream(&mut st)?;
     if st.is_empty() {
-      Ok(Rlp(item))
+      Ok(item)
     } else {
       Err(SerErr::RedundantData(st.get_index()))
     }
@@ -78,7 +78,7 @@ impl Rlp {
 
   fn get_in_binary(n: &usize) -> (u8, Vec<u8>) {
     let mut buf = [0u8; 8];
-    BigEndian::write_uint(&mut buf, *n as u64, 8);  // TODO support item of size > u32
+    BigEndian::write_uint(&mut buf, *n as u64, 8);
 
     let mut binary_size = 8;
     while binary_size > 0 {
@@ -98,31 +98,32 @@ impl Rlp {
         if len == 1 && bs[0] <= 0x7f {
           bs.clone()
         } else if len <= 55 {
-          let bs2 = vec![0x80 + len as u8];
+          let mut bs2 = vec![0x80 + len as u8];
           bs2.append(&mut bs.clone());
           bs2
         } else {
           let (len_binary_size, mut len_binary) = Rlp::get_in_binary(&len);
-          let bs2 = vec![0xb7 + len_binary_size];
+          let mut bs2 = vec![0xb7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs.clone());
           bs2
         }
       },
       Item::List(items) => {
-        let (bs, len) = items.into_iter().fold((vec![], 0), |acc, item| {
-          let (bs, len) = acc;
-          let child_bs = Rlp::encode_item(item);
+        let (mut bs, len) = items.into_iter().fold((vec![], 0), |acc, item| {
+          let (mut bs, len) = acc;
+          let mut child_bs = Rlp::encode_item(item);
           bs.append(&mut child_bs);
-          (bs, bs.len())
+          let child_len = bs.len();
+          (bs, len + child_len)
         });
         if len <= 55 {
-          let bs2 = vec![0xc0 + len as u8];
+          let mut bs2 = vec![0xc0 + len as u8];
           bs2.append(&mut bs);
           bs2
         } else {
           let (len_binary_size, mut len_binary) = Rlp::get_in_binary(&len);
-          let bs2 = vec![0xf7 + len_binary_size];
+          let mut bs2 = vec![0xf7 + len_binary_size];
           bs2.append(&mut len_binary);
           bs2.append(&mut bs);
           bs2
@@ -131,12 +132,51 @@ impl Rlp {
     }
   }
 
-  pub fn encode(&self) -> Vec<u8> {
-    let mut acc = Vec::<u8>::new();
-    Rlp::encode_item(&self.0)
+  pub fn encode(item: Item) -> Vec<u8> {
+    Rlp::encode_item(&item)
   }
 }
 
-#[test]
-fn foo_test() {
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::Item::{Str, List};
+
+  // The string "dog" = [ 0x83, 'd', 'o', 'g' ]
+  #[test]
+  fn dog() {
+    let in_item = Item::Str("dog".as_bytes().to_vec());
+    let bs = Rlp::encode(in_item);
+
+    assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
+    println!(r#"encoded Item("dog") -> {}"#, hex::encode(&bs));
+
+    match Rlp::decode(&bs).unwrap() {
+      List(_) => assert!(false),
+      Str(bs2) =>{
+        println!("decoded {} -> Str({:?})", hex::encode(&bs), String::from_utf8(bs2.clone()).unwrap());
+        assert_eq!(bs2, "dog".as_bytes());
+      },
+    };
+    assert_eq!(bs, [0x83, 'd' as u8, 'o' as u8, 'g' as u8]);
+  }
 }
+/*
+The list [ "cat", "dog" ] = [ 0xc8, 0x83, 'c', 'a', 't', 0x83, 'd', 'o', 'g' ]
+
+The empty string ('null') = [ 0x80 ]
+
+The empty list = [ 0xc0 ]
+
+The integer 0 = [ 0x80 ]
+
+The encoded integer 0 ('\x00') = [ 0x00 ]
+
+The encoded integer 15 ('\x0f') = [ 0x0f ]
+
+The encoded integer 1024 ('\x04\x00') = [ 0x82, 0x04, 0x00 ]
+
+The set theoretical representation of three, [ [], [[]], [ [], [[]] ] ] = [ 0xc7, 0xc0, 0xc1, 0xc0, 0xc3, 0xc0, 0xc1, 0xc0 ]
+
+The string "Lorem ipsum dolor sit amet, consectetur adipisicing elit" = [ 0xb8, 0x38, 'L', 'o', 'r', 'e', 'm', ' ', ... , 'e', 'l', 'i', 't' ]
+*/

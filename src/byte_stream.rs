@@ -17,10 +17,10 @@ pub enum SerErr {
 impl fmt::Debug for SerErr {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      SerErr::NoLengthHeader(idx) => write!(f, format!("No length header at {}", idx)),
-      SerErr::NoData(size, idx) => write!(f, format!("No data of size {} at {}", size, idx)),
-      SerErr::NoLengthSize(size, idx) => write!(f, format!("No length size of {} at {}", size, idx)),
-      SerErr::RedundantData(idx) => write!(f, format!("Redundant data found at {}", idx)),
+      SerErr::NoLengthHeader(idx) => write!(f, "No length header at {}", idx),
+      SerErr::NoData(size, idx) => write!(f, "No data of size {} at {}", size, idx),
+      SerErr::NoLengthSize(size, idx) => write!(f, "No length size of {} at {}", size, idx),
+      SerErr::RedundantData(idx) => write!(f, "Redundant data found at {}", idx),
     }
   }
 }
